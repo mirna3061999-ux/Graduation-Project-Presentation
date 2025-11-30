@@ -1,0 +1,288 @@
+﻿
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.express as px
+import seaborn as sns
+
+
+
+df = pd.read_csv(r"C:\Users\CR_86\Desktop\Python Final Project\railway.csv")
+df.head()
+
+
+## Missing Values
+df.isnull().sum()
+
+
+## Filling Missing
+df['Railcard'] = df['Railcard'].fillna('No Railcard')
+df['Reason for Delay'] = df['Reason for Delay'].fillna('No Delay')
+df['Actual Arrival Time'] = df['Actual Arrival Time'].fillna('Cancelled')
+df.head()
+
+
+
+df.isnull().sum()
+
+
+
+## Data Overview
+df.info()
+
+
+
+# Change Type 
+df['Date of Purchase'] = pd.to_datetime(df['Date of Purchase'], errors='coerce')
+df['Date of Journey'] = pd.to_datetime(df['Date of Journey'], errors='coerce')
+df.info()
+
+
+
+## Modifying and Standardizing Column Labels
+df['Reason for Delay'] = df['Reason for Delay'].replace({
+    'Staffing': 'Staff Shortage',
+    'Weather Conditions': 'Weather',
+    'Signal failure': 'Signal Failure'   
+})
+df
+
+
+
+## Removing Extra Whitespace from Column Names and Text Values
+str_cols = df.select_dtypes(include='object').columns
+df[str_cols] = df[str_cols].apply(lambda x: x.str.strip())
+
+
+
+## Remove Duplicates
+df.duplicated().sum()
+
+
+# حفظ نسخة من الداتا بعد التنظيف
+df.to_csv(r"C:\Users\CR_86\Desktop\Python Final Project\railway_cleaned.csv", index=False)
+
+
+
+## Outliers
+df['Price'].plot.box()
+
+# Outlier Justification – Price Column
+
+# During the analysis of ticket prices using a Boxplot, several high-value outliers were detected (prices above £200).
+#After investigating the related records, it was found that these, values correspond to a specific category of tickets characterized by:
+# - Ticket Class: First Class
+# - Ticket Type: Anytime (flexible travel option, usually more expensive)
+# - Railcard: None (no discount applied)
+# These tickets naturally have higher prices compared to standard , or discounted tickets.
+# Therefore, these outliers represent valid and realistic business cases, not data entry errors.
+
+
+#------------------------ KPIs (Card) ---------------------------------#
+
+## Total Revenue
+Total_Revenue = df['Price'].sum()
+print(f"Total Revenue: {Total_Revenue:,.0f}")
+
+## Average Ticket Price
+Average_Ticket_price = round(df['Price'].mean(),1)
+print(f"Average Ticket price: {Average_Ticket_price:,.0f}")
+
+## Total Users
+Total_Transaction = df.shape[0]
+print(f"Total Transaction: {Total_Transaction:,.0f}")
+
+## Total Refund $ & Refund Count
+refund_mask = df['Refund Request'] == 'Yes'
+refund_count = refund_mask.sum()
+Refund_Total= df.loc[refund_mask, 'Price'].sum()
+print(f"Total Refunded Revenue: {Refund_Total:,.0f}")
+print(f"Qty Tickets Refunded: {refund_count:,.0f}")
+refund_percentage = (Refund_Total / Total_Revenue) * 100
+print(f"Refund % of Total Revenue: {refund_percentage:.2f}%")
+
+## Total Routes
+df.insert(9,'Routes',df['Departure Station']+" ➔ "+ df['Arrival Destination'])
+unique_routes = df['Routes'].nunique()
+print(f"Number of Routes: {unique_routes:,}")
+
+## Cancelld & Delayed Trip
+cancelled_count = (df['Journey Status'] == 'Cancelled').sum()
+delayed_count = (df['Journey Status'] == 'Delayed').sum()
+on_time_trips = (df['Journey Status'] == 'On Time').sum()
+print(f"Cancelled Trips: {cancelled_count:,}")
+print(f"Delayed Trips: {delayed_count:,}")
+print(f"On Time Trips: {on_time_trips:,}")
+on_time_percentage = (on_time_trips / Total_Transaction) * 100
+print(f"On Time Percentage: {on_time_percentage:.2f}%")
+
+#------------ Revenue By Arrival & Departure Station ------------#
+
+colors = ['#003554', '#005587', '#2F739B', '#0086D4', '#457b9d']
+rev_arrival = df.groupby("Arrival Destination")["Price"].sum().sort_values(ascending=False).head(5)
+plt.figure(figsize=(14,10))
+
+plt.subplot(2,2,1)
+plt.bar(rev_arrival.index, rev_arrival.values, color=colors[:5])
+plt.xticks(rotation=45)
+plt.title("Revenue by Arrival Destination (Top 5)")
+plt.ylabel("Revenue")
+rev_departure = df.groupby("Departure Station")["Price"].sum().sort_values(ascending=False).head(5)
+plt.subplot(2,2,2)
+plt.bar(rev_departure.index, rev_departure.values, color=colors[:5])
+plt.xticks(rotation=45)
+plt.title("Revenue by Departure Station (Top 5)")
+plt.ylabel("Revenue")
+
+plt.tight_layout()
+plt.show()
+
+
+##Revenue By Ticket Type & Ticket Class & Payment Method & Purchase Type
+
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+categories = {
+    ' Revenue by Ticket Type': df.groupby('Ticket Type')['Price'].sum() / 1000,
+    ' Revenue by Ticket Class': df.groupby('Ticket Class')['Price'].sum() / 1000,
+     'Revenue by Purchase Type': df.groupby('Purchase Type')['Price'].sum() / 1000,
+    ' Revenue by Payment Method': df.groupby('Payment Method')['Price'].sum() / 1000}
+colors = ['#1d3557', '#457b9d', '#a8dadc']
+fig = make_subplots(
+    rows=2, cols=2,
+    specs=[
+        [{'type': 'domain'}, {'type': 'domain'}],
+        [{'type': 'domain'}, {'type': 'domain'}]],
+    subplot_titles=list(categories.keys()))
+positions = [(1,1), (1,2), (2,1), (2,2)]
+for pos, data in zip(positions, categories.values()):
+    fig.add_trace(go.Pie(
+        labels=data.index,
+        values=data.values,
+        hole=0.55,
+        marker=dict(colors=colors),
+        texttemplate='%{label}<br>£%{value:.1f}K<br>(%{percent})',
+        textposition='outside'),
+        row=pos[0], col=pos[1] )
+fig.update_layout(
+    font=dict(size=15, color='#1d3557'),
+    height=700, width=1100,
+    paper_bgcolor='white',
+    showlegend=False,
+    title=dict(
+        x=0.5,
+        y=0.95 ),
+    margin=dict(t=100) )
+for i, annotation in enumerate(fig['layout']['annotations']):
+    annotation['y'] += 0.05 
+fig.show()
+
+#-------------------- Monthly Revenue Trend ---------------------#
+df['Purchase_Year'] = df['Date of Purchase'].dt.year
+df['Purchase Month Name'] = df['Date of Purchase'].dt.month_name()
+
+monthly_rev = df.groupby(['Purchase_Year', 'Purchase Month Name'], as_index=False)['Price'].sum()
+monthly_rev['Price'] = monthly_rev['Price'] / 1000 
+monthly_rev = monthly_rev.sort_values('Purchase_Year')
+fig = px.line(
+    monthly_rev,
+    x='Purchase Month Name',
+    y='Price',
+    markers= True,
+    text='Price',
+    title=' Monthly Revenue Trend')
+fig.update_traces(
+    line_color='#1d3557',
+    line_width=3.5,
+    texttemplate='£%{text:.1f}K',
+    textposition='top center')
+fig.update_layout(
+        title_x=0.5, 
+    yaxis_title='Total Revenue (K)',
+    xaxis_title=None,
+    font=dict(size=13, color='#1d3557'),
+    plot_bgcolor='white',
+    paper_bgcolor='white',
+    height=500,
+    width=1150)
+fig.show()
+
+#--------------------- Top 5 Cancelled & Delayed Routes ----------------# 
+cancelled_routes = df[df['Journey Status']=='Cancelled'].groupby('Routes')['Journey Status'].count().sort_values(ascending=False).head(5)
+delayed_routes = df[df['Journey Status']=='Delayed'].groupby('Routes')['Journey Status'].count().sort_values(ascending=False).head(5)
+colors = ['#003554', '#005587', '#2F739B', '#0086D4', '#457b9d']
+plt.figure(figsize=(14,10))
+# Top 5 Cancelled Routes
+plt.subplot(2,2,1)
+plt.bar(cancelled_routes.index, cancelled_routes.values, color=colors[:5])
+plt.xticks(rotation=80)
+plt.title("Top 5 Cancelled Routes")
+plt.ylabel("Number of Cancellations")
+# Top 5 Delayed Routes
+plt.subplot(2,2,2)
+plt.bar(delayed_routes.index, delayed_routes.values, color=colors[:5])
+plt.xticks(rotation=80)
+plt.title("Top 5 Delayed Routes")
+plt.ylabel("Number of Delays")
+plt.tight_layout()
+plt.show()
+
+
+
+
+#--------------------- Top 5 Cancelled & Delayed Reasons--------------#
+# Top 5 Cancelled Reasons
+cancelled_reasons = (
+    df[df['Journey Status'] == 'Cancelled']
+    .groupby('Reason for Delay')['Journey Status']
+    .count()
+    .sort_values(ascending=False)
+    .head(5))
+# Top 5 Delayed Reasons
+delayed_reasons = (
+    df[df['Journey Status'] == 'Delayed']
+    .groupby('Reason for Delay')['Journey Status']
+    .count()
+    .sort_values(ascending=False)
+    .head(5))
+colors = ['#457b9d', '#0086D4', '#2F739B', '#005587', '#003554']
+plt.figure(figsize=(14,6))
+# Cancelled
+plt.subplot(1,2,1)
+plt.barh(cancelled_reasons.index, cancelled_reasons.values, color=colors)
+plt.xlabel("Number of Cancellations")
+plt.title("Cancelled by Reason for Delay")
+plt.gca().invert_yaxis() 
+# Delayed
+plt.subplot(1,2,2)
+plt.barh(delayed_reasons.index, delayed_reasons.values, color=colors)
+plt.xlabel("Number of Delays")
+plt.title("Delayed by Reason for Delay")
+plt.gca().invert_yaxis()
+
+plt.tight_layout()
+plt.show()
+
+
+
+#--------------------- Refunded Revenue By Reason For Delay & Journey Status ----------------------#
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+colors = ['#457b9d', '#0086D4', '#2F739B', '#005587', '#003554','#BBE8F2', '#94D7F2', '#5FB6D9']
+refund_df = df[df['Refund Request'] == 'Yes']
+revenue_by_delay = refund_df.groupby('Reason for Delay')['Price'].sum().reset_index()
+revenue_by_status = refund_df.groupby('Journey Status')['Price'].sum().reset_index()
+fig = make_subplots(rows=1, cols=2, specs=[[{'type':'domain'}, {'type':'domain'}]],
+                    subplot_titles=['Refunded Revenue By Reason For Delay', 'Refunded Revenue By Journey Status'])
+fig.add_trace(go.Pie(labels=revenue_by_delay['Reason for Delay'], 
+                     values=revenue_by_delay['Price'], 
+                     name="Reason For Delay", 
+                     marker_colors=colors), 
+              row=1, col=1)
+fig.add_trace(go.Pie(labels=revenue_by_status['Journey Status'], 
+                     values=revenue_by_status['Price'], 
+                     name="Journey Status", 
+                     marker_colors=colors), 
+              row=1, col=2)
+fig.update_layout(title_text="Refunded Revenue Analysis", height=500, width=1100)
+fig.show()
